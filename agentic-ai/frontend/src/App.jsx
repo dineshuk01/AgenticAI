@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 
 export default function App() {
-  const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem('backendUrl') || import.meta.env.VITE_API_URL);
+  const [backendUrl, setBackendUrl] = useState(() => {
+    const saved = localStorage.getItem('backendUrl');
+    return (saved && saved !== 'undefined') ? saved : (import.meta.env.VITE_API_URL || 'http://localhost:8000');
+  });
   const [sessionId, setSessionId] = useState(() => localStorage.getItem('sessionId') || crypto.randomUUID());
   const [health, setHealth] = useState(null);
   
