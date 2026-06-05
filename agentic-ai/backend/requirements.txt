@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+langchain
+langchain-openai
+langchain-community
+langgraph
+motor
+pymongo
+python-dotenv
+tavily-python
+sse-starlette
+langchain-experimental
+python-multipart
