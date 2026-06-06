@@ -9,7 +9,7 @@ load_dotenv()
 
 # Suppress all warnings to prevent LangChainPendingDeprecationWarning during imports
 warnings.filterwarnings("ignore")
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -17,6 +17,18 @@ from sse_starlette.sse import EventSourceResponse
 from langchain_core.messages import HumanMessage
 from agent.graph import app as agent_graph
 from memory import mongo
+import bcrypt
+
+def hash_password(password: str) -> str:
+    # Ensure password is not too long for bcrypt
+    pwd_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    password_byte_enc = plain_password.encode('utf-8')[:72]
+    hashed_password_byte_enc = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(password_byte_enc, hashed_password_byte_enc)
 
 app = FastAPI(title="Agentic AI API")
 
@@ -34,6 +46,7 @@ app.add_middleware(
 class RunRequest(BaseModel):
     goal: str
     session_id: str
+    user_email: str
 
 @app.post("/run")
 async def run_agent(request: RunRequest):
@@ -41,6 +54,7 @@ async def run_agent(request: RunRequest):
         initial_state = {
             "messages": [HumanMessage(content=request.goal)],
             "session_id": request.session_id,
+            "user_email": request.user_email,
             "iteration": 0,
             "steps": [],
             "final_answer": None
@@ -80,14 +94,14 @@ async def run_agent(request: RunRequest):
 
     return EventSourceResponse(event_generator())
 
-@app.get("/memory/{session_id}")
-async def get_memory(session_id: str):
-    memories = await mongo.list_memory(session_id)
+@app.get("/memory/{user_email}")
+async def get_memory(user_email: str):
+    memories = await mongo.list_memory(user_email)
     return {"memories": memories}
 
-@app.delete("/memory/{session_id}")
-async def delete_memory(session_id: str):
-    await mongo.clear_memory(session_id)
+@app.delete("/memory/{user_email}")
+async def delete_memory(user_email: str):
+    await mongo.clear_memory(user_email)
     return {"status": "cleared"}
 
 @app.get("/history/{session_id}")
@@ -100,18 +114,21 @@ async def health_check():
     return {"status": "ok", "mongo": "connected"}
 
 @app.post("/upload-file")
-async def upload_file(file: UploadFile = File(...)):
-    file_location = f"uploads/{file.filename}"
+async def upload_file(user_email: str, file: UploadFile = File(...)):
+    user_dir = os.path.join("uploads", user_email)
+    os.makedirs(user_dir, exist_ok=True)
+    file_location = os.path.join(user_dir, file.filename)
     with open(file_location, "wb") as f:
         shutil.copyfileobj(file.file, f)
     backend_url = os.getenv("BACKEND_URL", "http://localhost:8000")
-    return {"url": f"{backend_url}/uploads/{file.filename}", "filename": file_location}
+    return {"url": f"{backend_url}/uploads/{user_email}/{file.filename}", "filename": file.filename}
 
 @app.get("/workspace-files")
-async def get_workspace_files():
+async def get_workspace_files(user_email: str):
     files = []
-    if os.path.exists("uploads"):
-        files = [f for f in os.listdir("uploads") if os.path.isfile(os.path.join("uploads", f))]
+    user_dir = os.path.join("uploads", user_email)
+    if os.path.exists(user_dir):
+        files = [f for f in os.listdir(user_dir) if os.path.isfile(os.path.join(user_dir, f))]
     return {"files": files}
 
 @app.delete("/workspace-files/{filename}")

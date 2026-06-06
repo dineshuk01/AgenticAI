@@ -12,34 +12,35 @@ db = client.agentdb
 agent_memory_coll = db.agent_memory
 session_history_coll = db.session_history
 checkpoints_coll = db.checkpoints
+users_coll = db.users
 
-async def read_memory(key: str, session_id: str) -> str | None:
-    doc = await agent_memory_coll.find_one({"key": key, "session_id": session_id})
+async def read_memory(key: str, user_email: str) -> str | None:
+    doc = await agent_memory_coll.find_one({"key": key, "user_email": user_email})
     if doc:
         return doc.get("value")
     return None
 
-async def write_memory(key: str, value: str, session_id: str) -> None:
+async def write_memory(key: str, value: str, user_email: str) -> None:
     await agent_memory_coll.update_one(
-        {"key": key, "session_id": session_id},
+        {"key": key, "user_email": user_email},
         {"$set": {"value": value, "updatedAt": datetime.utcnow()}},
         upsert=True
     )
 
-async def list_memory(session_id: str) -> list[dict]:
-    cursor = agent_memory_coll.find({"session_id": session_id})
+async def list_memory(user_email: str) -> list[dict]:
+    cursor = agent_memory_coll.find({"user_email": user_email})
     memories = []
     async for doc in cursor:
         memories.append({
             "key": doc.get("key"),
             "value": doc.get("value"),
             "updatedAt": doc.get("updatedAt"),
-            "session_id": doc.get("session_id")
+            "user_email": doc.get("user_email")
         })
     return memories
 
-async def clear_memory(session_id: str) -> None:
-    await agent_memory_coll.delete_many({"session_id": session_id})
+async def clear_memory(user_email: str) -> None:
+    await agent_memory_coll.delete_many({"user_email": user_email})
 
 async def save_checkpoint(thread_id: str, state: dict) -> None:
     await checkpoints_coll.update_one(
@@ -66,3 +67,14 @@ async def load_session(session_id: str) -> list[dict]:
     if doc:
         return doc.get("messages", [])
     return []
+
+async def create_user(name: str, email: str, password_hash: str) -> None:
+    await users_coll.update_one(
+        {"email": email},
+        {"$set": {"name": name, "password_hash": password_hash, "createdAt": datetime.utcnow()}},
+        upsert=True
+    )
+
+async def get_user_by_email(email: str) -> dict | None:
+    doc = await users_coll.find_one({"email": email})
+    return doc

@@ -1,12 +1,13 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import MainApp from './MainApp';
-import Signin from './components/Signin';
-import Signup from './components/Signup';
+import { useState, useEffect, useRef } from 'react';
 
-export default function App() {
+export default function MainApp({ user, onLogout }) {
   const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-  const [sessionId, setSessionId] = useState(() => localStorage.getItem('sessionId') || crypto.randomUUID());
+  const email = user?.email || 'anon';
+  const sessionIdKey = `sessionId_${email}`;
+  const sessionsKey = `sessions_${email}`;
+  const getStepsKey = (id) => `steps_${email}_${id}`;
+
+  const [sessionId, setSessionId] = useState(() => localStorage.getItem(sessionIdKey) || crypto.randomUUID());
   const [health, setHealth] = useState(null);
   
   const [goal, setGoal] = useState('');
@@ -18,11 +19,11 @@ export default function App() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState('');
   
-  const [sessions, setSessions] = useState(() => JSON.parse(localStorage.getItem('sessions')) || [{ id: sessionId, title: 'Current Chat' }]);
+  const [sessions, setSessions] = useState(() => JSON.parse(localStorage.getItem(sessionsKey)) || [{ id: sessionId, title: 'Current Chat' }]);
   
   const [steps, setSteps] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem(`steps_${sessionId}`)) || [];
+      return JSON.parse(localStorage.getItem(getStepsKey(sessionId))) || [];
     } catch {
       return [];
     }
@@ -31,18 +32,18 @@ export default function App() {
   const logEndRef = useRef(null);
 
   useEffect(() => {
-    localStorage.setItem('sessions', JSON.stringify(sessions));
-  }, [sessions]);
+    localStorage.setItem(sessionsKey, JSON.stringify(sessions));
+  }, [sessions, sessionsKey]);
 
   useEffect(() => {
-    localStorage.setItem(`steps_${sessionId}`, JSON.stringify(steps));
-  }, [steps, sessionId]);
+    localStorage.setItem(getStepsKey(sessionId), JSON.stringify(steps));
+  }, [steps, sessionId, email]);
 
   const loadSession = (id) => {
     setSessionId(id);
     setEditingTitle(false);
     try {
-      const savedSteps = JSON.parse(localStorage.getItem(`steps_${id}`)) || [];
+      const savedSteps = JSON.parse(localStorage.getItem(getStepsKey(id))) || [];
       setSteps(savedSteps);
     } catch {
       setSteps([]);
@@ -68,8 +69,15 @@ export default function App() {
 
 
   useEffect(() => {
-    localStorage.setItem('sessionId', sessionId);
-  }, [sessionId]);
+    localStorage.setItem(sessionIdKey, sessionId);
+  }, [sessionId, sessionIdKey]);
+
+  useEffect(() => {
+    if (user?.email) {
+      fetchMemories();
+      fetchWorkspaceFiles();
+    }
+  }, [user?.email]);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -77,8 +85,9 @@ export default function App() {
   }, [steps]);
 
   const fetchWorkspaceFiles = async () => {
+    if (!user?.email) return;
     try {
-      const res = await fetch(`${backendUrl}/workspace-files`);
+      const res = await fetch(`${backendUrl}/workspace-files?user_email=${encodeURIComponent(user.email)}`);
       const data = await res.json();
       setWorkspaceFiles(data.files || []);
     } catch (e) {
@@ -88,8 +97,9 @@ export default function App() {
 
   const deleteFile = async (e, filename) => {
     e.stopPropagation();
+    if (!user?.email) return;
     try {
-      await fetch(`${backendUrl}/workspace-files/${filename}`, { method: 'DELETE' });
+      await fetch(`${backendUrl}/workspace-files/${filename}?user_email=${encodeURIComponent(user.email)}`, { method: 'DELETE' });
       if (fileName === filename) {
         setFileUrl(null);
         setFileName(null);
@@ -102,7 +112,7 @@ export default function App() {
 
   const deleteSession = (e, id) => {
     e.stopPropagation();
-    localStorage.removeItem(`steps_${id}`);
+    localStorage.removeItem(getStepsKey(id));
     
     const updatedSessions = sessions.filter(s => s.id !== id);
     if (updatedSessions.length === 0) {
@@ -131,23 +141,48 @@ export default function App() {
   };
 
   const fetchMemories = async () => {
+    if (!user?.email) return;
     try {
-      const res = await fetch(`${backendUrl}/memory/${sessionId}`);
+      const res = await fetch(`${backendUrl}/memory/${encodeURIComponent(user.email)}`);
       const data = await res.json();
       setMemories(data.memories || []);
     } catch (e) {
       console.error('Failed to fetch memories', e);
     }
-    setLoading(false);
-  }, []);
-
-  const handleLogin = (userData) => {
-    setUser(userData);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    setUser(null);
+  const clearMemories = async () => {
+    if (!user?.email) return;
+    try {
+      await fetch(`${backendUrl}/memory/${encodeURIComponent(user.email)}`, { method: 'DELETE' });
+      setMemories([]);
+    } catch (e) {
+      console.error('Failed to clear memories', e);
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch(`${backendUrl}/upload-file?user_email=${encodeURIComponent(user.email)}`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.url) {
+        setFileUrl(data.url);
+        setFileName(data.filename);
+      } else {
+        alert(data.error || "Upload failed");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error uploading file");
+    }
+    e.target.value = null;
   };
 
   const runAgent = async () => {
@@ -174,7 +209,7 @@ export default function App() {
       const response = await fetch(`${backendUrl}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goal: finalGoal, session_id: sessionId })
+        body: JSON.stringify({ goal: finalGoal, session_id: sessionId, user_email: user.email })
       });
 
       const reader = response.body.getReader();
@@ -265,7 +300,7 @@ export default function App() {
         {/* Generated Files */}
         <div className="p-3 border-t border-b border-slate-700 font-semibold text-sm flex justify-between items-center bg-slate-800 shrink-0">
           <span>Generated Files</span>
-          <button onClick={fetchWorkspaceFiles} className="text-xs text-slate-400 hover:text-white transition" title="Refresh">↻</button>
+          <button onClick={fetchWorkspaceFiles} className="text-xs text-slate-400 hover:text-white transition" title="Refresh">Γå╗</button>
         </div>
         <div className="overflow-y-auto max-h-48 border-b border-slate-700 bg-slate-800/50 shrink-0">
           {workspaceFiles.length === 0 && <div className="p-3 text-xs text-slate-500 italic text-center">No files yet</div>}
@@ -327,6 +362,16 @@ export default function App() {
               </button>
             </div>
           )}
+          
+          <div className="flex items-center gap-4">
+            <span className="text-slate-300 text-sm">Welcome, {user?.name || 'User'}</span>
+            <button 
+              onClick={onLogout}
+              className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded transition shadow-sm"
+            >
+              Logout
+            </button>
+          </div>
         </header>
 
         {/* Main Layout (Chat + Viewer) */}
