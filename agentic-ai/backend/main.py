@@ -132,42 +132,9 @@ async def get_workspace_files(user_email: str):
     return {"files": files}
 
 @app.delete("/workspace-files/{filename}")
-async def delete_workspace_file(filename: str, user_email: str):
-    file_path = os.path.join("uploads", user_email, filename)
+async def delete_workspace_file(filename: str):
+    file_path = os.path.join("uploads", filename)
     if os.path.exists(file_path):
         os.remove(file_path)
         return {"status": "deleted"}
     return {"status": "not_found", "error": "File not found"}
-
-class SignupRequest(BaseModel):
-    name: str
-    email: str
-    password: str
-
-class SigninRequest(BaseModel):
-    email: str
-    password: str
-
-@app.post("/api/signup")
-async def signup(request: SignupRequest):
-    existing_user = await mongo.get_user_by_email(request.email)
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    hashed_password = hash_password(request.password)
-    await mongo.create_user(request.name, request.email, hashed_password)
-    return {"message": "User created successfully"}
-
-@app.post("/api/signin")
-async def signin(request: SigninRequest):
-    user = await mongo.get_user_by_email(request.email)
-    if not user or not verify_password(request.password, user["password_hash"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    
-    return {
-        "message": "Signin successful",
-        "user": {
-            "name": user.get("name"),
-            "email": user.get("email")
-        }
-    }
