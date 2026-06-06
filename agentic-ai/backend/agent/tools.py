@@ -24,21 +24,21 @@ def run_python(code: str) -> str:
         return f"Error executing Python code: {str(e)}"
 
 @tool
-async def read_memory(key: str, session_id: str) -> str:
-    """Retrieve a stored memory value by key and session_id."""
-    value = await mongo.read_memory(key, session_id)
+async def read_memory(key: str, user_email: str) -> str:
+    """Retrieve a stored memory value by key and user_email."""
+    value = await mongo.read_memory(key, user_email)
     return value if value else f"No memory found for key: {key}"
 
 @tool
-async def write_memory(key: str, value: str, session_id: str) -> str:
+async def write_memory(key: str, value: str, user_email: str) -> str:
     """Save a value to persistent memory."""
-    await mongo.write_memory(key, value, session_id)
+    await mongo.write_memory(key, value, user_email)
     return f"Saved: {key} = {value}"
 
 @tool
-async def list_memory(session_id: str) -> str:
+async def list_memory(user_email: str) -> str:
     """List all stored memory keys and values."""
-    memories = await mongo.list_memory(session_id)
+    memories = await mongo.list_memory(user_email)
     if not memories:
         return "No memories found."
     return str([{"key": m["key"], "value": m["value"]} for m in memories])
@@ -46,12 +46,17 @@ async def list_memory(session_id: str) -> str:
 import os
 
 @tool
-def save_to_file(filename: str, content: str) -> str:
+def save_to_file(filename: str, content: str, user_email: str = "") -> str:
     """Save content to a local file in the workspace."""
     try:
         import os
         safe_filename = os.path.basename(filename)
-        file_path = os.path.join("uploads", safe_filename)
+        if user_email:
+            user_dir = os.path.join("uploads", user_email)
+        else:
+            user_dir = "uploads"
+        os.makedirs(user_dir, exist_ok=True)
+        file_path = os.path.join(user_dir, safe_filename)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
         return f"Successfully wrote to {safe_filename}"
@@ -59,12 +64,16 @@ def save_to_file(filename: str, content: str) -> str:
         return f"Error writing to file: {str(e)}"
 
 @tool
-def read_file(filename: str) -> str:
+def read_file(filename: str, user_email: str = "") -> str:
     """Read content from a local file in the workspace."""
     try:
         import os
         safe_filename = os.path.basename(filename)
-        file_path = os.path.join("uploads", safe_filename)
+        if user_email:
+            user_dir = os.path.join("uploads", user_email)
+        else:
+            user_dir = "uploads"
+        file_path = os.path.join(user_dir, safe_filename)
         with open(file_path, "r", encoding="utf-8") as f:
             return f.read()
     except Exception as e:

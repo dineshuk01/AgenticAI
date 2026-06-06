@@ -16,9 +16,9 @@ You solve tasks step by step using tools.
 Available tools:
 - web_search(query) - search the web for current information
 - run_python(code) - execute Python code and return output
-- read_memory(key, session_id) - retrieve a stored memory value
-- write_memory(key, value, session_id) - save a value to persistent memory
-- list_memory(session_id) - list all stored memory keys and values
+- read_memory(key, user_email) - retrieve a stored memory value
+- write_memory(key, value, user_email) - save a value to persistent memory
+- list_memory(user_email) - list all stored memory keys and values
 - save_to_file(filename, content) - save content to a local file
 - read_file(filename) - read content from a local file
 
@@ -36,8 +36,8 @@ async def orchestrator_node(state: AgentState) -> AgentState:
     messages = state.get("messages", [])
     if not messages or messages[0].type != "system":
         from langchain_core.messages import SystemMessage
-        session_id = state.get("session_id", "unknown")
-        dynamic_prompt = SYSTEM_PROMPT + f"\n\nIMPORTANT: Your current session_id is '{session_id}'. You MUST use this exact session_id when calling memory tools."
+        user_email = state.get("user_email", "unknown")
+        dynamic_prompt = SYSTEM_PROMPT + f"\n\nIMPORTANT: The current user's email is '{user_email}'. You MUST use this email when calling memory tools."
         messages = [SystemMessage(content=dynamic_prompt)] + messages
         
     # Bulletproof fix: Scan for hanging tool calls in history and inject dummy ToolMessages
@@ -93,7 +93,11 @@ async def tool_node(state: AgentState) -> AgentState:
             tool_instance = tool_map.get(tool_name)
             if tool_instance:
                 try:
-                    result = await tool_instance.ainvoke(tc["args"])
+                    args = dict(tc["args"])
+                    if tool_name in ["save_to_file", "read_file"]:
+                        args["user_email"] = state.get("user_email", "")
+                    
+                    result = await tool_instance.ainvoke(args)
                     messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=tool_name))
                     steps.append({"type": "observation", "tool": tool_name, "result": str(result)})
                 except Exception as e:
@@ -122,7 +126,13 @@ async def memory_node(state: AgentState) -> AgentState:
             tool_instance = tool_map.get(tool_name)
             if tool_instance:
                 try:
-                    result = await tool_instance.ainvoke(tc["args"])
+                    user_email = state.get("user_email", "anonymous")
+                    args = dict(tc["args"])
+                    args["user_email"] = user_email
+                    if "session_id" in args:
+                        del args["session_id"]
+                    
+                    result = await tool_instance.ainvoke(args)
                     messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"], name=tool_name))
                     steps.append({"type": "observation", "tool": tool_name, "result": str(result)})
                 except Exception as e:

@@ -14,33 +14,33 @@ session_history_coll = db.session_history
 checkpoints_coll = db.checkpoints
 users_coll = db.users
 
-async def read_memory(key: str, session_id: str) -> str | None:
-    doc = await agent_memory_coll.find_one({"key": key, "session_id": session_id})
+async def read_memory(key: str, user_email: str) -> str | None:
+    doc = await agent_memory_coll.find_one({"key": key, "user_email": user_email})
     if doc:
         return doc.get("value")
     return None
 
-async def write_memory(key: str, value: str, session_id: str) -> None:
+async def write_memory(key: str, value: str, user_email: str) -> None:
     await agent_memory_coll.update_one(
-        {"key": key, "session_id": session_id},
+        {"key": key, "user_email": user_email},
         {"$set": {"value": value, "updatedAt": datetime.utcnow()}},
         upsert=True
     )
 
-async def list_memory(session_id: str) -> list[dict]:
-    cursor = agent_memory_coll.find({"session_id": session_id})
+async def list_memory(user_email: str) -> list[dict]:
+    cursor = agent_memory_coll.find({"user_email": user_email})
     memories = []
     async for doc in cursor:
         memories.append({
             "key": doc.get("key"),
             "value": doc.get("value"),
             "updatedAt": doc.get("updatedAt"),
-            "session_id": doc.get("session_id")
+            "user_email": doc.get("user_email")
         })
     return memories
 
-async def clear_memory(session_id: str) -> None:
-    await agent_memory_coll.delete_many({"session_id": session_id})
+async def clear_memory(user_email: str) -> None:
+    await agent_memory_coll.delete_many({"user_email": user_email})
 
 async def save_checkpoint(thread_id: str, state: dict) -> None:
     await checkpoints_coll.update_one(
