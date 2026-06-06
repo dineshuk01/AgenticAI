@@ -11,3 +11,5 @@ tavily-python
 sse-starlette
 langchain-experimental
 python-multipart
+passlib
+bcrypt

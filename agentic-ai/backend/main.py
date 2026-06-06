@@ -9,7 +9,7 @@ load_dotenv()
 
 # Suppress all warnings to prevent LangChainPendingDeprecationWarning during imports
 warnings.filterwarnings("ignore")
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -17,6 +17,18 @@ from sse_starlette.sse import EventSourceResponse
 from langchain_core.messages import HumanMessage
 from agent.graph import app as agent_graph
 from memory import mongo
+import bcrypt
+
+def hash_password(password: str) -> str:
+    # Ensure password is not too long for bcrypt
+    pwd_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    password_byte_enc = plain_password.encode('utf-8')[:72]
+    hashed_password_byte_enc = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(password_byte_enc, hashed_password_byte_enc)
 
 app = FastAPI(title="Agentic AI API")
 
@@ -113,3 +125,36 @@ async def get_workspace_files():
     if os.path.exists("uploads"):
         files = [f for f in os.listdir("uploads") if os.path.isfile(os.path.join("uploads", f))]
     return {"files": files}
+
+class SignupRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+class SigninRequest(BaseModel):
+    email: str
+    password: str
+
+@app.post("/api/signup")
+async def signup(request: SignupRequest):
+    existing_user = await mongo.get_user_by_email(request.email)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_password = hash_password(request.password)
+    await mongo.create_user(request.name, request.email, hashed_password)
+    return {"message": "User created successfully"}
+
+@app.post("/api/signin")
+async def signin(request: SigninRequest):
+    user = await mongo.get_user_by_email(request.email)
+    if not user or not verify_password(request.password, user["password_hash"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    
+    return {
+        "message": "Signin successful",
+        "user": {
+            "name": user.get("name"),
+            "email": user.get("email")
+        }
+    }
