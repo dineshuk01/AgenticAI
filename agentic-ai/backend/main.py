@@ -126,6 +126,14 @@ async def get_workspace_files():
         files = [f for f in os.listdir("uploads") if os.path.isfile(os.path.join("uploads", f))]
     return {"files": files}
 
+@app.delete("/workspace-files/{filename}")
+async def delete_workspace_file(filename: str):
+    file_path = os.path.join("uploads", filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        return {"status": "deleted"}
+    return {"status": "not_found", "error": "File not found"}
+
 class SignupRequest(BaseModel):
     name: str
     email: str
