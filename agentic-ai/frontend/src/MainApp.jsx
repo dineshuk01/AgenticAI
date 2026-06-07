@@ -307,7 +307,7 @@ export default function MainApp({ user, onLogout }) {
           {workspaceFiles.map(f => (
             <div 
               key={f} 
-              onClick={() => { setFileUrl(`${backendUrl}/uploads/${f}`); setFileName(f); }}
+              onClick={() => { setFileUrl(`${backendUrl}/uploads/${encodeURIComponent(user.email)}/${f}`); setFileName(f); }}
               className="p-3 border-b border-slate-700/50 cursor-pointer hover:bg-slate-700 transition text-sm flex items-center justify-between group"
               title={f}
             >
