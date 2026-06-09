@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import logoImg from './assets/logo.jpg';
 
 export default function MainApp({ user, onLogout }) {
   const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -265,9 +266,10 @@ export default function MainApp({ user, onLogout }) {
       {/* Sidebar (Full Height) */}
       <div className="w-full md:w-64 bg-slate-800 border-r border-slate-700 flex flex-col shadow-lg overflow-hidden shrink-0 h-full">
         {/* Logo / Brand Area inside Sidebar */}
-        <div className="p-4 border-b border-slate-700 flex items-center justify-center shrink-0">
+        <div className="p-4 border-b border-slate-700 flex items-center justify-center space-x-2 shrink-0">
+          <img src={logoImg} alt="Twnyon AI Logo" className="h-8 w-8 rounded-md object-cover" />
           <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400 text-center">
-            Agentic AI System
+            Twnyon AI System
           </h1>
         </div>
 
