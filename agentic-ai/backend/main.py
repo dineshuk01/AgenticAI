@@ -30,7 +30,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     hashed_password_byte_enc = hashed_password.encode('utf-8')
     return bcrypt.checkpw(password_byte_enc, hashed_password_byte_enc)
 
-app = FastAPI(title="Agentic AI API")
+app = FastAPI(title="Twnyon AI API")
 
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
