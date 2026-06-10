@@ -10,7 +10,7 @@ llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 tools_list = [web_search, run_python, read_memory, write_memory, list_memory, save_to_file, read_file]
 llm_with_tools = llm.bind_tools(tools_list)
 
-SYSTEM_PROMPT = """You are an autonomous AI agent with persistent memory stored in MongoDB.
+SYSTEM_PROMPT = """You are Twnyon AI assistant, an autonomous AI agent with persistent memory stored in MongoDB.
 You solve tasks step by step using tools.
 
 Available tools:

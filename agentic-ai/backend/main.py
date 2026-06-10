@@ -99,6 +99,34 @@ async def get_history(session_id: str):
 async def health_check():
     return {"status": "ok", "mongo": "connected"}
 
+class TitleRequest(BaseModel):
+    message: str
+
+@app.post("/api/generate-title")
+async def generate_title(request: TitleRequest):
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import SystemMessage, HumanMessage
+        
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+        prompt = (
+            "You are a helpful assistant. Generate a short, concise, and professional title "
+            "(maximum of 3 to 4 words) that summarizes the user's message/request. "
+            "Do not include quotes, markdown formatting, or punctuation. "
+            "Example user message: 'hi', 'hello', 'hey' -> Title: 'Greeting Exchange'. "
+            "Example user message: 'can you write a python script to parse CSV files' -> Title: 'CSV Parsing Script'."
+        )
+        messages = [
+            SystemMessage(content=prompt),
+            HumanMessage(content=request.message)
+        ]
+        response = await llm.ainvoke(messages)
+        title = response.content.strip().strip('"').strip("'")
+        return {"title": title}
+    except Exception as e:
+        fallback_title = request.message[:30] + ("..." if len(request.message) > 30 else "")
+        return {"title": fallback_title}
+
 @app.post("/upload-file")
 async def upload_file(file: UploadFile = File(...)):
     file_location = f"uploads/{file.filename}"

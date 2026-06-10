@@ -13,6 +13,10 @@ export default function App() {
   const [memories, setMemories] = useState([]);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeMobileTab, setActiveMobileTab] = useState('chat');
+  const [isSearchingFiles, setIsSearchingFiles] = useState(false);
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
   
   const [sessions, setSessions] = useState(() => JSON.parse(localStorage.getItem('sessions')) || [{ id: sessionId, title: 'Current Chat' }]);
   
@@ -44,6 +48,7 @@ export default function App() {
       setSteps([]);
     }
     setGoal('');
+    setIsSidebarOpen(false);
   };
 
   const newChat = () => {
@@ -52,6 +57,7 @@ export default function App() {
     setEditingTitle(false);
     setSteps([]);
     setGoal('');
+    setIsSidebarOpen(false);
   };
 
   const saveTitle = () => {
@@ -89,6 +95,7 @@ export default function App() {
       if (fileName === filename) {
         setFileUrl(null);
         setFileName(null);
+        setActiveMobileTab('chat');
       }
       fetchWorkspaceFiles();
     } catch (err) {
@@ -181,9 +188,28 @@ export default function App() {
       }
     });
 
+    // Generate a contextual, understanding-based chat title in the background if it's the first message
+    const isFirstMessage = steps.length === 0;
+    if (isFirstMessage) {
+      fetch(`${backendUrl}/api/generate-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: goal })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.title) {
+          setSessions(prev => prev.map(s => 
+            s.id === sessionId ? { ...s, title: data.title } : s
+          ));
+        }
+      })
+      .catch(err => console.error('Failed to generate title', err));
+    }
+
     let finalGoal = goal;
     if (fileName) {
-        finalGoal = `${goal}\n\n[Context: The user has uploaded a file located at '${fileName}'. You can read it using the read_file tool.]`;
+        finalGoal = `${goal}\n\n[Context: The file '${fileName}' is currently open in the viewer. Do NOT read, analyze, inspect, or reference this file unless the user's message explicitly requests actions on it. For general greetings, off-topic chat, or unrelated questions, ignore the file and respond directly to the user's message.]`;
     }
 
     setSteps(s => [...s, { type: 'user', content: goal }]);
@@ -243,16 +269,39 @@ export default function App() {
     }
   };
 
+  const filteredFiles = workspaceFiles.filter(f => 
+    f.toLowerCase().includes(fileSearchQuery.toLowerCase())
+  );
+
   return (
     <div className="h-screen bg-slate-900 text-slate-200 flex flex-col md:flex-row font-sans overflow-hidden">
       
-      {/* Sidebar (Full Height) */}
-      <div className="w-full md:w-64 bg-slate-800 border-r border-slate-700 flex flex-col shadow-lg overflow-hidden shrink-0 h-full">
+      {/* Sidebar Drawer Backdrop Overlay (Mobile only) */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 z-30 md:hidden backdrop-blur-sm transition-opacity duration-300"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar (Full Height / Drawer on Mobile) */}
+      <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-800 border-r border-slate-700 flex flex-col shadow-lg transition-transform duration-300 ease-in-out md:static md:translate-x-0 shrink-0 h-full ${
+        isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      }`}>
         {/* Logo / Brand Area inside Sidebar */}
-        <div className="p-4 border-b border-slate-700 flex items-center justify-center shrink-0">
+        <div className="p-4 border-b border-slate-700 flex items-center justify-between md:justify-center gap-2 shrink-0">
           <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400 text-center">
             Agentic AI System
           </h1>
+          <button 
+            onClick={() => setIsSidebarOpen(false)} 
+            className="md:hidden text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-700/50 transition"
+            title="Close Menu"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
         <div className="p-3 border-b border-slate-700 font-semibold text-sm flex justify-between items-center shrink-0">
@@ -283,15 +332,54 @@ export default function App() {
         
         {/* Generated Files */}
         <div className="p-3 border-t border-b border-slate-700 font-semibold text-sm flex justify-between items-center bg-slate-800 shrink-0">
-          <span>Generated Files</span>
-          <button onClick={fetchWorkspaceFiles} className="text-xs text-slate-400 hover:text-white transition" title="Refresh">↻</button>
+          {isSearchingFiles ? (
+            <div className="flex items-center gap-2 w-full">
+              <input 
+                type="text"
+                placeholder="Search files..."
+                value={fileSearchQuery}
+                onChange={e => setFileSearchQuery(e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-xs md:text-sm text-slate-200 focus:outline-none focus:border-blue-500 w-full font-normal"
+                autoFocus
+              />
+              <button 
+                onClick={() => { setIsSearchingFiles(false); setFileSearchQuery(''); }} 
+                className="text-slate-400 hover:text-white text-xs px-1"
+                title="Cancel Search"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <>
+              <span>Generated Files</span>
+              <button 
+                onClick={() => setIsSearchingFiles(true)} 
+                className="text-slate-400 hover:text-white transition" 
+                title="Search Files"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
         <div className="overflow-y-auto max-h-48 border-b border-slate-700 bg-slate-800/50 shrink-0">
-          {workspaceFiles.length === 0 && <div className="p-3 text-xs text-slate-500 italic text-center">No files yet</div>}
-          {workspaceFiles.map(f => (
+          {filteredFiles.length === 0 && (
+            <div className="p-3 text-xs text-slate-500 italic text-center">
+              {workspaceFiles.length === 0 ? 'No files yet' : 'No matching files'}
+            </div>
+          )}
+          {filteredFiles.map(f => (
             <div 
               key={f} 
-              onClick={() => { setFileUrl(`${backendUrl}/uploads/${f}`); setFileName(f); }}
+              onClick={() => { 
+                setFileUrl(`${backendUrl}/uploads/${f}`); 
+                setFileName(f); 
+                setActiveMobileTab('viewer');
+                setIsSidebarOpen(false);
+              }}
               className="p-3 border-b border-slate-700/50 cursor-pointer hover:bg-slate-700 transition text-sm flex items-center justify-between group"
               title={f}
             >
@@ -312,47 +400,80 @@ export default function App() {
       </div>
 
       {/* Right Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-slate-900">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-slate-800">
         
         {/* Header */}
-        <header className="bg-slate-800 p-4 border-b border-slate-700 flex flex-wrap gap-4 items-center justify-between shadow-md shrink-0">
-          {editingTitle ? (
-            <div className="flex items-center gap-2">
-              <input 
-                type="text"
-                className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-blue-500"
-                value={titleInput}
-                onChange={e => setTitleInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && saveTitle()}
-                autoFocus
-              />
-              <button onClick={saveTitle} className="text-xs bg-emerald-600 hover:bg-emerald-500 px-2 py-1 rounded text-white">Save</button>
-              <button onClick={() => setEditingTitle(false)} className="text-xs bg-slate-600 hover:bg-slate-500 px-2 py-1 rounded text-white">Cancel</button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 group">
-              <h2 className="text-lg font-semibold text-slate-200 truncate">
-                {sessions.find(s => s.id === sessionId)?.title || 'Current Chat'}
-              </h2>
-              <button 
-                onClick={() => {
-                  setTitleInput(sessions.find(s => s.id === sessionId)?.title || 'Current Chat');
-                  setEditingTitle(true);
-                }}
-                className="text-slate-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Edit Title"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-              </button>
-            </div>
-          )}
+        <header className="bg-slate-800 px-4 py-3 md:p-4 border-b border-slate-700 flex items-center justify-between shadow-md shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Hamburger Button (Mobile only) */}
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-700/50 transition shrink-0"
+              title="Open Menu"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            {editingTitle ? (
+              <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+                <input 
+                  type="text"
+                  className="bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 sm:px-2 sm:py-1 text-slate-200 focus:outline-none focus:border-blue-500 text-xs md:text-sm w-24 xs:w-32 sm:w-48"
+                  value={titleInput}
+                  onChange={e => setTitleInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveTitle()}
+                  autoFocus
+                />
+                <button onClick={saveTitle} className="text-[10px] sm:text-xs bg-emerald-600 hover:bg-emerald-500 px-1.5 py-1 sm:px-2 rounded text-white shrink-0">Save</button>
+                <button onClick={() => setEditingTitle(false)} className="text-[10px] sm:text-xs bg-slate-600 hover:bg-slate-500 px-1.5 py-1 sm:px-2 rounded text-white shrink-0">Cancel</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 group min-w-0">
+                <h2 className="text-base md:text-lg font-semibold text-slate-200 truncate">
+                  {sessions.find(s => s.id === sessionId)?.title || 'Current Chat'}
+                </h2>
+                <button 
+                  onClick={() => {
+                    setTitleInput(sessions.find(s => s.id === sessionId)?.title || 'Current Chat');
+                    setEditingTitle(true);
+                  }}
+                  className="text-slate-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  title="Edit Title"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                </button>
+              </div>
+            )}
+          </div>
         </header>
 
+        {/* Mobile Tab Switcher */}
+        {fileUrl && (
+          <div className="flex border-b border-slate-700 bg-slate-800 md:hidden shrink-0">
+            <button 
+              onClick={() => setActiveMobileTab('chat')}
+              className={`flex-1 py-3 text-center text-sm font-medium border-b-2 transition ${activeMobileTab === 'chat' ? 'border-blue-500 text-blue-400 bg-slate-700/30' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+            >
+              Chat
+            </button>
+            <button 
+              onClick={() => setActiveMobileTab('viewer')}
+              className={`flex-1 py-3 text-center text-sm font-medium border-b-2 transition ${activeMobileTab === 'viewer' ? 'border-blue-500 text-blue-400 bg-slate-700/30' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+            >
+              Viewer ({fileName})
+            </button>
+          </div>
+        )}
+
         {/* Main Layout (Chat + Viewer) */}
-        <main className="flex-1 overflow-hidden flex p-4 gap-4">
+        <main className="flex-1 overflow-hidden flex flex-col md:flex-row p-0 gap-0">
           
           {/* Left Column: Chat */}
-          <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-lg flex flex-col overflow-hidden shadow-inner">
+          <div className={`flex-1 bg-transparent border-0 flex flex-col overflow-hidden shadow-inner ${
+            fileUrl && activeMobileTab !== 'chat' ? 'hidden md:flex' : 'flex'
+          }`}>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {steps.length === 0 && <div className="text-slate-500 text-center mt-10">How can I help you?</div>}
               {steps.filter(s => s.type === 'user' || s.type === 'agent' || s.type === 'error').map((step, idx) => (
@@ -382,15 +503,17 @@ export default function App() {
 
           {/* Right Column: PDF Viewer */}
           {fileUrl && (
-            <div className="flex-1 bg-slate-800 border border-slate-700 rounded-lg flex flex-col shadow-lg overflow-hidden">
+            <div className={`flex-1 bg-slate-800 border-0 md:border-l border-slate-700 flex flex-col shadow-lg overflow-hidden ${
+              activeMobileTab !== 'viewer' ? 'hidden md:flex' : 'flex'
+            }`}>
               <div className="p-3 border-b border-slate-700 font-semibold text-sm flex justify-between items-center">
-                <span>File Viewer</span>
+                <span className="truncate max-w-[150px] xs:max-w-xs md:max-w-md" title={fileName}>{fileName}</span>
                 <div className="flex gap-2">
                   <a href={fileUrl} download target="_blank" rel="noreferrer" className="text-xs bg-emerald-900/50 hover:bg-emerald-800/60 text-emerald-300 px-2 py-1 rounded transition flex items-center gap-1">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     Download
                   </a>
-                  <button onClick={() => { setFileUrl(null); setFileName(null); }} className="text-xs bg-red-900/50 hover:bg-red-800/60 text-red-300 px-2 py-1 rounded transition">Close</button>
+                  <button onClick={() => { setFileUrl(null); setFileName(null); setActiveMobileTab('chat'); }} className="text-xs bg-red-900/50 hover:bg-red-800/60 text-red-300 px-2 py-1 rounded transition">Close</button>
                 </div>
               </div>
               <iframe src={fileUrl} className="flex-1 w-full h-full bg-slate-200" title="File Viewer" />
@@ -400,15 +523,15 @@ export default function App() {
         </main>
 
         {/* Bottom Bar */}
-        <footer className="bg-slate-800 p-4 border-t border-slate-700 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] shrink-0">
-          <div className="flex gap-4 max-w-6xl mx-auto items-end w-full">
-            <label className="flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-slate-300 h-[46px] w-[50px] rounded-lg cursor-pointer transition shadow-lg shrink-0 mb-[2px]" title="Upload File">
+        <footer className="bg-slate-800 p-3 md:p-4 border-t border-slate-700 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] shrink-0">
+          <div className="flex gap-2 md:gap-4 max-w-6xl mx-auto items-end w-full">
+            <label className="flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-slate-300 h-[46px] w-[46px] md:w-[50px] rounded-lg cursor-pointer transition shadow-lg shrink-0 mb-[2px]" title="Upload File">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
               <input type="file" className="hidden" onChange={handleFileUpload} />
             </label>
             <textarea 
               placeholder="What should the agent do?"
-              className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition shadow-inner resize-none min-h-[46px] overflow-y-auto"
+              className="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-3 py-3 md:px-4 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition shadow-inner resize-none min-h-[46px] overflow-y-auto"
               rows={1}
               value={goal}
               onChange={e => setGoal(e.target.value)}
@@ -431,14 +554,21 @@ export default function App() {
             <button 
               onClick={runAgent}
               disabled={isRunning || !goal.trim()}
-              className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium px-8 h-[46px] rounded-lg transition flex items-center justify-center min-w-[140px] shadow-lg hover:shadow-blue-500/20 active:scale-95 mb-[2px]"
+              className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium px-4 md:px-8 h-[46px] rounded-lg transition flex items-center justify-center min-w-[46px] md:min-w-[140px] shadow-lg hover:shadow-blue-500/20 active:scale-95 mb-[2px]"
             >
               {isRunning ? (
                 <span className="flex items-center gap-2">
                   <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  Running...
+                  <span className="hidden md:inline">Running...</span>
                 </span>
-              ) : 'Run Agent'}
+              ) : (
+                <>
+                  <span className="hidden md:inline">Run Agent</span>
+                  <svg className="w-5 h-5 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                  </svg>
+                </>
+              )}
             </button>
           </div>
         </footer>
